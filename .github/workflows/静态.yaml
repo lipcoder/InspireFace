@@ -1,0 +1,117 @@
+name: Build Static SDK
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build:
+    name: Build ${{ matrix.platform }}
+
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: darwin-arm64
+            os: macos-15
+
+          - platform: linux-amd64
+            os: ubuntu-24.04
+
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Show platform
+        shell: bash
+        run: |
+          uname -a
+          echo "Architecture: $(uname -m)"
+
+          if [[ "${{ matrix.platform }}" == "darwin-arm64" ]]; then
+            test "$(uname -m)" = "arm64"
+          fi
+
+          if [[ "${{ matrix.platform }}" == "linux-amd64" ]]; then
+            test "$(uname -m)" = "x86_64"
+          fi
+
+      - name: Install dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            build-essential \
+            cmake \
+            git
+
+      - name: Configure
+        shell: bash
+        run: |
+          cmake \
+            -S . \
+            -B build \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DISF_BUILD_SHARED_LIBS=OFF \
+            -DISF_BUILD_WITH_TEST=OFF \
+            -DISF_BUILD_WITH_SAMPLE=OFF \
+            -DISF_ENABLE_BENCHMARK=OFF \
+            -DISF_NEVER_USE_OPENCV=ON \
+            -DISF_ENABLE_OPENCV=OFF \
+            -DISF_ENABLE_APPLE_EXTENSION=OFF \
+            -DISF_ENABLE_TENSORRT=OFF \
+            -DISF_ENABLE_RKNN=OFF
+
+      - name: Build
+        shell: bash
+        run: |
+          cmake --build build \
+            --target install \
+            --parallel
+
+      - name: Verify
+        shell: bash
+        run: |
+          SDK="build/install/InspireFace"
+
+          echo "===== SDK ====="
+          find "$SDK" -type f | sort
+
+          echo
+          echo "===== Static libraries ====="
+          ls -lh "$SDK/lib/libInspireFace.a"
+          ls -lh "$SDK/lib/libMNN.a"
+
+          test -f "$SDK/lib/libInspireFace.a"
+          test -f "$SDK/lib/libMNN.a"
+
+          if [[ "${{ matrix.platform }}" == "darwin-arm64" ]]; then
+            echo
+            echo "===== Architectures ====="
+            lipo -archs "$SDK/lib/libInspireFace.a"
+            lipo -archs "$SDK/lib/libMNN.a"
+          fi
+
+      - name: Build info
+        shell: bash
+        run: |
+          SDK="build/install/InspireFace"
+
+          cat > "$SDK/BUILD_INFO.txt" <<EOF
+          platform=${{ matrix.platform }}
+          inspireface_commit=$(git rev-parse HEAD)
+          build_type=Release
+          shared=false
+          tensorrt=false
+          rknn=false
+          apple_extension=false
+          EOF
+
+      - name: Upload SDK
+        uses: actions/upload-artifact@v4
+        with:
+          name: inspireface-static-${{ matrix.platform }}
+          path: build/install/InspireFace
+          retention-days: 30
+          if-no-files-found: error
