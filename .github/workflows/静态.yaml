@@ -49,10 +49,19 @@ jobs:
       - name: Configure
         shell: bash
         run: |
+          EXTRA_ARGS=()
+
+          if [[ "${{ matrix.platform }}" == "darwin-arm64" ]]; then
+            EXTRA_ARGS+=(
+              -DCMAKE_OSX_ARCHITECTURES=arm64
+            )
+          fi
+
           cmake \
             -S . \
             -B build \
             -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_POLICY_VERSION_MINIMUM=3.5 \
             -DISF_BUILD_SHARED_LIBS=OFF \
             -DISF_BUILD_WITH_TEST=OFF \
             -DISF_BUILD_WITH_SAMPLE=OFF \
@@ -61,7 +70,8 @@ jobs:
             -DISF_ENABLE_OPENCV=OFF \
             -DISF_ENABLE_APPLE_EXTENSION=OFF \
             -DISF_ENABLE_TENSORRT=OFF \
-            -DISF_ENABLE_RKNN=OFF
+            -DISF_ENABLE_RKNN=OFF \
+            "${EXTRA_ARGS[@]}"
 
       - name: Build
         shell: bash
